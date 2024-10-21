@@ -1,0 +1,170 @@
+---
+title: "2_TappingResults"
+output: html_notebook
+---
+
+# INTRO
+
+```{r}
+
+# opt + cmd + i pour créer chunk
+
+
+# ------ CLEANING R SESSION ####
+rm(list=ls()) # clean environment window
+graphics.off() # clean plot window
+
+# ------ PACKAGE LOADING ####
+library(writexl) # to export .xlxs file
+library(readxl) # to read .xlxs file
+library(here) # to load data in the project data folder
+library(dplyr) # to use infix operator %>%
+library(naniar) # to use replace_with_na_all function
+library(pracma) # to have findpeaks functions
+library(tidyr) # to tidy data
+library(rstatix) # to detecte outliers
+library(ggplot2) # to plot data
+library(readxl) # to load excel file
+library(ggpubr) # to build qq plot
+library(lsr) # to compute Cohen's D for pairwise comparisons
+library(matrixStats) # to compute SD over rows
+library(readr) # to load tsv files
+library(MetBrewer) # to have more palettes
+library(ggrepel) # to have label on line chart
+# library(tidyverse)
+
+
+# ------ FUNCTION AND EXTERN FILES CALL ####
+source(here("3_analysis/Functions/plots.R"))
+
+```
+
+# ITIs
+
+```{r}
+
+# ------ LOAD DATA FILE ####
+file2work <- read_excel(here("3_analysis/StatisticalAnalysisTapping_DistanceMedianITI&PossibleMeters.xls"),col_names = TRUE)
+
+# ------ Transform column to factors
+file2work[, 1:6] <- 
+  lapply(file2work[, 1:6], as.factor)
+
+
+# ------ CHECK HYPOTHESES ####
+
+# => Not normally distributed !!!
+# ------ Normality Duple
+# QQ-plot
+ggqqplot(file2work, x = "Distance", ggtheme = theme_bw()) +
+  facet_grid(Group ~ Meter, labeller = "label_both")
+
+# Density plot
+ggdensity(file2work, "Distance", ggtheme = theme_bw()) +
+  facet_grid(Group ~ Meter, labeller = "label_both")
+
+# Shapiro-Wilk test
+file2work %>% 
+  group_by(Group, Meter) %>%
+  shapiro_test(Distance)
+
+
+# ------ Preference for duple meters ####
+
+ggboxplot(file2work, x = "Meter", y = "Distance",color = "Group", palette = "jco", add = "jitter")
+wilcox_test(Distance ~ Meter, data = file2work, paired = TRUE)
+wilcox_effsize(Distance ~ Meter, data = file2work, paired = TRUE)
+wilcox.test(Distance ~ Meter, data = file2work, paired = TRUE)
+
+# shorter distance for musicians
+ggboxplot(subset(file2work, Meter == 'Duple'), x = "Group", y = "Distance", add = "jitter")
+wilcox.test(Distance ~ Group, data = subset(file2work, Meter == 'Duple'), paired = FALSE)
+wilcox_test(Distance ~ Group, data = subset(file2work, Meter == 'Duple'), paired = FALSE)
+wilcox_effsize(Distance ~ Group, data = subset(file2work, Meter == 'Duple'), paired = FALSE)
+
+# distance between duple periodicities (400 or 800ms)
+file2work <- read_excel(here("3_analysis/StatisticalAnalysisTapping_DistanceMedianITI&DuplePeriodicities.xls"),col_names = TRUE)
+
+file2work[, 1:6] <- lapply(file2work[, 1:6], as.factor)
+ggboxplot(file2work, x = "Group", y = "Distance",color = "Group", palette = "jco", add = "jitter")
+wilcox_test(Distance ~ Periodicity, data = file2work, paired = TRUE)
+wilcox_effsize(Distance ~ Periodicity, data = file2work, paired = TRUE)
+
+
+```
+
+# Asynchronies
+
+```{r}
+
+# ------ LOAD DATA FILE ####
+file2work <- read_excel(here("3_analysis/StatisticalAnalysisTapping_Asynchronies.xls"),
+                        col_names = TRUE)
+
+# ------ Transform column to factors
+file2work[, 1:5] <- 
+  lapply(file2work[, 1:5], as.factor)
+
+
+# ------ CHECK HYPOTHESES ####
+
+# ------ Normality
+# QQ-plot
+ggqqplot(file2work, x = "MeanAsynchrony", ggtheme = theme_bw()) +
+  facet_grid(Group ~ Condition, labeller = "label_both")
+
+# Density plot
+ggdensity(file2work, "MeanAsynchrony", ggtheme = theme_bw()) +
+  facet_grid(Group ~ Condition, labeller = "label_both")
+
+# Shapiro-Wilk test
+file2work %>% 
+  group_by(Group, Condition) %>%
+  shapiro_test(MeanAsynchrony)
+
+
+# ------ Mann-Whitney ####
+# (= Wilcoxon rank-sum test with paired = FALSE). 
+# Group comparison
+wilcox.test(MeanAsynchrony ~ Group, data = subset(file2work, Condition == 'ABAB1' & TrialNumber == 'Trial1'), paired = FALSE)
+wilcox_effsize(MeanAsynchrony ~ Group, data = subset(file2work, Condition == 'ABAB1' & TrialNumber == 'Trial1'), paired = FALSE)
+
+wilcox.test(MeanAsynchrony ~ Group, data = subset(file2work, Condition == 'AAAA' & TrialNumber == 'Trial1'), paired = FALSE)
+wilcox_effsize(MeanAsynchrony ~ Group, data = subset(file2work, Condition == 'AAAA' & TrialNumber == 'Trial1'), paired = FALSE)
+
+wilcox.test(MeanAsynchrony ~ Group, data = subset(file2work, Condition == 'ABAB2' & TrialNumber == 'Trial1'), paired = FALSE)
+wilcox_effsize(MeanAsynchrony ~ Group, data = subset(file2work, Condition == 'ABAB2' & TrialNumber == 'Trial1'), paired = FALSE)
+
+wilcox.test(MeanAsynchrony ~ Group, data = subset(file2work, Condition == 'CDEF' & TrialNumber == 'Trial1'), paired = FALSE)
+wilcox_effsize(MeanAsynchrony ~ Group, data = subset(file2work, Condition == 'CDEF' & TrialNumber == 'Trial1'), paired = FALSE)
+
+# Condition order 
+wilcox.test(MeanAsynchrony ~ CondOrder, data = subset(file2work, TrialNumber == 'Trial1' & Group == 'Musicians'), paired = FALSE)
+wilcox.test(MeanAsynchrony ~ CondOrder, data = subset(file2work, TrialNumber == 'Trial1' & Group == 'NonMusicians'), paired = FALSE)
+
+
+############################# How to manually apply the Bonferroni correction and have the corresponding p-values ? 
+
+       bxp <- ggboxplot(
+          file2work, x = "Group", y = "MeanAsynchrony",
+          color = "Condition", palette = "jco",
+          facet.by =  "CondOrder"
+          )
+        bxp
+
+# ------ Friedman ####
+# Non-parametric alternative to the one-way repeated measures ANOVA test
+# https://www.datanovia.com/en/lessons/friedman-test-in-r/
+# conditions      
+
+dataMus = subset(file2work, Group == 'Musicians' & TrialNumber == 'Trial1')
+dataMus = as.matrix(dataMus)
+
+friedman.test(MeanAsynchrony ~ Condition | Subject, data=dataMus)
+
+dataNonMus = subset(file2work, Group == 'NonMusicians' & TrialNumber == 'Trial1')
+dataNonMus = as.matrix(dataNonMus)
+
+friedman.test(MeanAsynchrony ~ Condition | Subject, data=dataNonMus)
+
+```

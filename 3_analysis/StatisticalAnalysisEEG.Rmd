@@ -1,0 +1,234 @@
+---
+title: "9_Anova_SpectralDomain_SuppMaterials"
+output: html_notebook
+---
+
+# INTRO
+```{r}
+
+# opt + cmd + i pour créer chunk
+
+
+# ------ CLEANING R SESSION ####
+rm(list=ls()) # clean environment window
+graphics.off() # clean plot window
+
+# ------ PACKAGE LOADING ####
+library(writexl) # to export .xlxs file
+library(readxl) # to read .xlxs file
+library(here) # to load data in the project data folder
+library(dplyr) # to use infix operator %>%
+library(naniar) # to use replace_with_na_all function
+library(pracma) # to have findpeaks functions
+library(tidyr) # to tidy data
+library(rstatix) # to detecte outliers
+library(ggplot2) # to plot data
+library(readxl) # to load excel file
+library(ggpubr) # to build qq plot
+library(lsr) # to compute Cohen's D for pairwise comparisons
+library(matrixStats) # to compute SD over rows
+library(readr) # to load tsv files
+library(MetBrewer) # to have more palettes
+library(ggrepel) # to have label on line chart
+# library(tidyverse)
+
+
+# ------ FUNCTION AND EXTERN FILES CALL ####
+source(here("3_analysis/Functions/plots.R"))
+
+```
+
+
+# DATA LOADING
+```{r}
+
+
+# ------ LOAD DATA FILE ####
+file2work <- read_excel(here("3_analysis/StatisticalAnalysisEEG.xls"), col_names = TRUE)
+
+# ------ Transform column to factors
+file2work[, 1:4] <- 
+  lapply(file2work[, 1:4], as.factor)
+
+
+# ------ Compute mean and standard deviation
+file2work %>%
+  group_by(Group, Condition, CondOrder) %>%
+  get_summary_stats(MetRelzScore_MixLargeRange, type = "mean_sd")
+
+```
+
+
+# FIGURE
+```{r}
+
+# ------ FIGURE ####
+ggplot(file2work,
+         aes(y = MetRelzScore_MixLargeRange, x = Condition, col = Group, fill = Group)) +
+  geom_point(aes(y = MetRelzScore_MixLargeRange, x = Condition),
+             position = position_jitter(width = .05), #.05
+             size = 1) +
+  geom_boxplot(width = .1,
+               outlier.shape = NA,
+               alpha = 0,
+               colour = "black",
+               lwd = 0.35) +
+  # guides(color = "none") +
+  guides(fill = "none") +
+  scale_x_discrete("Condition") +
+  scale_y_continuous("Z score") +
+  apa7
+
+```
+
+# CHECK HYPOTHESES
+```{r}
+# ------ CHECK HYPOTHESES ####
+
+# ------ Normality
+# QQ-plot
+ggqqplot(file2work, x = "MetRelzScore_MixLargeRange", ggtheme = theme_bw()) +
+  facet_grid(Group ~ Condition, labeller = "label_both")
+
+# Density plot
+ggdensity(file2work, "MetRelzScore_MixLargeRange", ggtheme = theme_bw()) +
+  facet_grid(Group ~ Condition, labeller = "label_both")
+
+
+
+# Shapiro-Wilk test
+shapiro_MixLargeRange <- file2work %>% 
+  group_by(Group, Condition, CondOrder) %>%
+  shapiro_test(MetRelzScore_MixLargeRange)
+
+```
+
+# T tests against 0 (Selective enhancement and zscores)
+```{r}
+
+results <- list()
+pvalues <- data.frame(iteration = numeric(), value = numeric())
+i = 1
+
+for (cond in unique(file2work$Condition)) {
+  for (grp in unique(file2work$Group)) {
+    for (ordr in unique(file2work$CondOrder)) {
+      # subset_data <- subset(file2work, Group == grp & Condition == cond & CondOrder == ordr)$MetRelzScore_MixLargeRange
+      subset_data <- subset(file2work, Group == grp & Condition == cond & CondOrder == ordr)$SelectiveEnhancement_MixLargeRange
+      # subset_data <- subset(file2work, Group == grp & Condition == cond & CondOrder == ordr)$MetRelzScore_MixShortRange
+      # subset_data <- subset(file2work, Group == grp & Condition == cond & CondOrder == ordr)$SelectiveEnhancement_MixShortRange
+      # subset_data <- subset(file2work, Group == grp & Condition == cond & CondOrder == ordr)$MetRelzScore_StimBased
+      # subset_data <- subset(file2work, Group == grp & Condition == cond & CondOrder == ordr)$SelectiveEnhancement_StimBased
+    
+      # Perform Shapiro-Wilk normality test
+      shapiro_test <- shapiro.test(subset_data)
+      
+      # Check if p-value is greater than 0.05
+      if (shapiro_test$p.value > 0.05) {
+        # If p-value > 0.05, perform t-test against 0
+        t_test <- t.test(subset_data, mu = 0, alternative = "greater")
+        test_type <- "t-test"
+        test_result <- t_test
+      } else {
+        # If p-value <= 0.05, perform Wilcoxon signed-rank test against 0
+        wilcox_test <- wilcox.test(subset_data, mu = 0, alternative="greater")
+        test_type <- "Wilcoxon test"
+        test_result <- wilcox_test
+      }
+      
+      pvalues <- rbind(pvalues, data.frame(iteration = i, value = test_result$p.value))
+        
+      plot (repmat(1,13,1),subset_data)
+      # Store results
+      result <- list(
+      Condition = cond,
+      Group = grp,
+      CondOrder = ordr,
+      test_type = test_type,
+      test_result = test_result
+    )
+    results[[paste(cond, grp, ordr, sep = "_")]] <- result
+    i = i+1
+    }
+  }
+}
+
+# Print results
+for (key in names(results)) {
+  cat("Condition:", results[[key]]$Condition, "Group:", results[[key]]$Group, "ConditionOrder:", results[[key]]$CondOrder, "\n")
+  cat("Test type:", results[[key]]$test_type, "\n")
+  print(results[[key]]$test_result)
+  cat("\n")
+}
+
+# fdr correction for multiple comparisons
+# https://www.r-bloggers.com/2023/07/the-benjamini-hochberg-procedure-fdr-and-p-value-adjusted-explained/
+
+#p_values<-c(0.143 ,0.128 , 0.864, 0.006, 0.319, 0.86, 0.904, 0.229)
+pvalues = pvalues[,2]
+ranks       <- rank(pvalues, ties.method = "last")
+p_m_over_k  <- pvalues*length(pvalues)/ranks
+
+pvalues_adj<-c()
+
+for (i in 1:length(pvalues)) {
+  # find the rank
+  tmp_rank<-ranks[i]
+  # get all the p_m_over_k that are greater or equal to this rank and get the min value
+  pvalues_adj<-c(pvalues_adj, min(1,min(p_m_over_k[ranks>=tmp_rank])))
+}
+
+t(rbind(pvalues,pvalues_adj))
+
+
+```
+
+# ANOVA
+```{r}
+
+# ------ OMNIBUS ANOVA ####
+
+anova_test(data = file2work,
+           dv = MetRelzScore_MixLargeRange,
+           wid = Subject,
+           within = c(Condition),
+           between = c(Group,CondOrder), 
+           type = 3,
+           detailed = TRUE,
+           effect.size = "pes")
+
+```
+
+
+# POST HOC TESTS
+```{r}
+# ------ POST HOC TESTS ####
+
+# ------ t test to compare the conditions
+file2work %>%
+  t_test(MetRelzScore_MixLargeRange ~ Condition,
+         paired = TRUE,
+         alternative = "two.sided", # "greater" for one sided hypothesis
+         detailed = TRUE) %>%
+  adjust_pvalue(method = "fdr")
+
+# Effect size to compare the conditions
+file2work %>%
+  cohens_d(MetRelzScore_MixLargeRange ~ Condition,
+           paired = TRUE)
+
+# ------ t test to compare the condition orders
+file2work %>%
+  t_test(MetRelzScore_MixLargeRange ~ CondOrder,
+         paired = TRUE,
+         alternative = "two.sided", # "greater" for one sided hypothesis
+         detailed = TRUE) %>%
+  adjust_pvalue(method = "bonferroni")
+
+# Effect size to compare the groups
+file2work %>%
+  cohens_d(MetRelzScore_MixLargeRange ~ CondOrder,
+           paired = TRUE)
+
+```
+
