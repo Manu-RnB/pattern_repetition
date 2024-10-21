@@ -457,8 +457,8 @@ for iGroup = 1:length(groups)
 end
   
 cd(fullfile(projectPath,'4_figures'))
-figName = 'Fig2_Tapping Analysis_ViolinITI';
-% print([figName,'.jpg'],'-djpeg','-r600') 
-% exportgraphics(gcf,[figName,'.eps'],...   
-%     'ContentType','vector',...
-%     'BackgroundColor','none')    
+figName = 'Fig3_Tapping Analysis';
+print([figName,'.jpg'],'-djpeg','-r600') 
+exportgraphics(gcf,[figName,'.eps'],...   
+    'ContentType','vector',...
+    'BackgroundColor','none')    
